@@ -1,0 +1,352 @@
+(*****************************************************************
+程式:Station 10 Control Program
+作者Andy Wang
+版本資訊:v1.0		2017/04/05
+********************************************************************
+控制程式*)
+(*PowerOn=0*)
+(*Idle=1    ---------------------------|*)
+(*無夾取=2*)                      (*有夾取移位出=12*)
+(*上下回1=3*)                     (*上下出2=13*) 
+(*移位歸1=4*)                     (*馬達反轉=14*) 
+(*上下出1=5*)                     (*馬達停止=15*) 
+(*夾取出=6*)                      (*馬達正轉=16*)
+(*上下回2=7*)                     (*馬達停止夾取關=17*)
+(*閥蓋檢查1=8*)                   (*上下回3=18*)
+(*NG次數檢查=9*)                  (*移位歸2=19*)
+(*NG次數未到達=10*)               (*閥蓋檢查2=20*) 
+(*NG次數到達=11*)                 
+(********************************************************************
+復歸程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*馬達停止=2*)
+(*夾取歸=3*)
+(*上下回=4*)
+(*移位歸=5*)
+(******************************************************************)
+(*本站狀態判斷*)
+IF (IndexData[10].OKFlag[10]
+	OR IndexData[10].NGFlag[10]) AND S10_MoveBack_LS THEN
+	IndexData[10].FinishFlag[10]:=TRUE;
+END_IF;
+
+IF NOT(IndexData[10].FinishFlag[9]
+	AND IndexData[10].OKFlag[9]
+	AND NOT(IndexData[10].NGFlag[9])) THEN
+	IndexData[10].NGFlag[9]:=TRUE;
+END_IF;
+
+IF DisablePB[10] AND IndexData[10].FinishFlag[2] AND IndexData[10].OKFlag[2] AND NOT(IndexData[10].NGFlag[2]) THEN
+	IndexData[10].OKFlag[10]:=TRUE;
+END_IF;
+(*時間轉換*)
+MotorTimer_RW:=WORD_TO_TIME(S10_MotorTimer_RW)*100;(*馬達反轉停止時間*)
+MotorTimer_FW:=WORD_TO_TIME(S10_MotorTimer_FW)*100;(*馬達正轉停止時間*)
+Rtrig_test(_CLK:=TestPB[10]);
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Autoflow:=0;
+	ErrorCounter:=0;
+END_IF;
+
+(*Idle=1*)
+IF AutoFlow=0 AND SystemReadyStatus AND NOT(ErrorStatus[10]) AND EStopPB THEN
+	AutoFlow:=1;
+END_IF;
+ORGFlag[10]:=AutoStatus AND NOT(S10_Clip_SOL) 
+             AND S10_Up_LS AND S10_MoveBack_LS;
+(*閥蓋檢查NG*)			 
+IF Autoflow=11 AND NOT(S10_Clip_SOL) THEN
+	Autoflow:=1;
+END_IF;
+(*預鎖完成*)
+IF Autoflow=20 AND NOT(S10_CheckSNR_Error) AND IndexData[10].OkFlag[10] THEN
+	Autoflow:=1;
+END_IF;
+(*預鎖NG*)
+IF Autoflow=20 AND S10_CheckSNR_Error AND IndexData[10].OkFlag[10] THEN
+	Autoflow:=1;
+END_IF;
+(*閥蓋檢查OK*)
+IF Autoflow=8 AND TON_4.Q THEN
+	Autoflow:=1;
+	ErrorCounter:=0;
+END_IF;
+
+IF Autoflow=1 THEN		(*IDLE狀態*)
+	AutoIdle[10]:=TRUE;
+	ELSE
+	AutoIdle[10]:=FALSE;
+END_IF;
+(*無夾取=2*) 
+IF Autoflow=1
+	AND AutoStatus
+	AND NOT(S10_Clip_SOL)
+	AND NOT(DisablePB[10])
+	AND ORGFlag[10]
+	AND (MachineRunStatus AND NOT(IndexData[10].FinishFlag[10]) AND IndexData[10].FinishFlag[9] AND IndexData[10].OKFlag[9] AND NOT(IndexData[10].NGFlag[9])
+	OR Rtrig_test.Q) THEN
+	Autoflow:=2;
+END_IF;
+(*上下回1=3*) 
+IF Autoflow=2  THEN
+	Autoflow:=3;
+	ErrorCounter:=0;
+END_IF;
+(*移位歸1=4*) 
+IF Autoflow=3 AND S10_Up_LS THEN
+	Autoflow:=4;
+END_IF;
+(*上下出1=5*)
+IF S10_Down_LS AND NOT(S10_Up_LS)  THEN
+	DownStatus:=TRUE;
+END_IF;
+IF S10_Up_LS THEN
+	DownStatus:=FALSE;
+END_IF;
+IF (Autoflow=4 AND S10_MoveBack_LS) OR Autoflow=10  THEN
+	Autoflow:=5;
+END_IF;
+(*夾取出=6*) 
+TON_1(IN:= DownStatus ,PT:= T#500MS );
+IF Autoflow=5 AND TON_1.Q THEN
+	Autoflow:=6;
+	ErrorCounter:=ErrorCounter+1;
+END_IF;
+(*上下回2=7*)
+TON_2(IN:= Autoflow=6 AND S10_Clip_SOL ,PT:= T#500MS );
+IF Autoflow=6 AND TON_2.Q THEN
+	Autoflow:=7;
+END_IF;
+(*閥蓋檢查1=8*)
+TON_3(IN:= Autoflow=7 AND S10_Up_LS ,PT:= T#500MS );
+IF Autoflow=7 AND TON_3.Q THEN
+	Autoflow:=8;
+END_IF;
+TON_4(IN:= Autoflow=8 AND S10_Check_SNR ,PT:= T#100MS );(*檢查OK*)
+TON_5(IN:= Autoflow=8 AND NOT(S10_Check_SNR),PT:= T#100MS);(*檢查NG*)
+(*NG次數檢查=9*)    
+IF Autoflow=8 AND TON_5.Q THEN
+	Autoflow:=9;
+END_IF;
+(*NG次數未到達=10*)  
+IF Autoflow=9 AND ErrorCounter<1 THEN
+	Autoflow:=10;
+END_IF;
+(*NG次數到達=11*) 
+IF Autoflow=9 AND ErrorCounter>=2 THEN
+	Autoflow:=11;
+	S10_CheckSNR_Error:=TRUE;
+	IndexData[10].OkFlag[10]:=TRUE;
+	END_IF;
+IF ResetPB THEN
+	S10_CheckSNR_Error:=FALSE;
+END_IF;
+(*有夾取移位出=12*)
+IF Autoflow=1
+	AND AutoStatus
+	AND S10_Clip_SOL
+	AND S10_Up_LS
+	AND NOT(DisablePB[10])
+	AND (NOT(IndexData[10].FinishFlag[10]) 
+	AND IndexData[10].FinishFlag[9] 
+	AND IndexData[10].OKFlag[9] 
+	AND NOT(IndexData[10].NGFlag[9]) OR Rtrig_test.Q) THEN
+	Autoflow:=12;
+END_IF;
+(*上下出2=13*)
+TON_6(IN:= Autoflow=12 AND S10_MoveOut_LS,PT:= T#300MS);
+IF Autoflow=12 AND TON_6.Q THEN
+	Autoflow:=13;
+END_IF;
+(*馬達反轉=14*)
+IF Autoflow=13 AND DownStatus THEN
+	Autoflow:=14;
+END_IF;
+(*馬達停止=15*) 
+TON_7(IN:= Autoflow=14 ,PT:= MotorTimer_RW);
+IF 	Autoflow=14 AND  TON_7.Q THEN
+	Autoflow:=15;
+END_IF;
+(*馬達正轉=16*)
+TON_8(IN:= Autoflow=15  ,PT:= T#100MS);
+IF Autoflow=15 AND TON_8.Q THEN
+	Autoflow:=16;
+END_IF;
+(*馬達停止夾取關=17*)
+TON_9(IN:= Autoflow=16  ,PT:= MotorTimer_FW);
+IF 	Autoflow=16 AND (TON_9.Q OR S10_Check2_SNR)  THEN
+	Autoflow:=17;
+END_IF;
+(*上下回3=18*)
+TON_11(IN:= Autoflow=17 ,PT:= T#300MS);
+IF 	Autoflow=17 AND  TON_11.Q THEN
+	Autoflow:=18;
+END_IF;
+(*移位歸2=19*)
+IF Autoflow=18 AND S10_Up_LS THEN
+	Autoflow:=19;
+END_IF;
+(*閥蓋檢查2=20*)
+TON_12(IN:= Autoflow=19 AND S10_Check_SNR ,PT:= T#100MS );(*檢查NG*)
+TON_13(IN:= Autoflow=19 AND NOT(S10_Check_SNR),PT:= T#100MS);(*檢查OK*)
+IF Autoflow=19 AND TON_12.Q THEN
+	IndexData[10].OkFlag[10]:=TRUE;
+	S10_CheckSNR_Error:=TRUE;
+	Autoflow:=20;
+END_IF;
+IF  Autoflow=19 AND TON_13.Q THEN
+	IndexData[10].OkFlag[10]:=TRUE;
+	Autoflow:=20;
+END_IF;
+(*************************************************************************)
+(*Error*)
+IF NOT(SystemReadyStatus) OR ErrorStatus[10] OR NOT(EStopPB)  THEN
+	IF NOT(IndexData[10].OKFlag[10]) THEN
+		IndexData[10].NGFlag[10]:=TRUE;
+	END_IF;
+	Autoflow:=0;
+END_IF;
+(*次數異常
+IF ResetPB THEN
+ErrorCounter:=0;
+END_IF;
+IF ErrorCounter>=2 THEN
+CountError[9]:=TRUE;
+END_IF;*)
+(*手動*)
+R_TRIG_1(_CLK:= S10_UpDown1_PB);
+R_TRIG_2(_CLK:= S10_UpDown2_PB);
+interlockdown:=Index_LS AND NOT(Index_RY);   			  
+(*SET_(預鎖下1)*)
+IF (R_TRIG_1.Q  OR Autoflow=5 OR Autoflow=13 ) AND interlockdown 
+	AND ((S10_MoveBack_LS AND NOT(S10_MoveBack_SOL)) 
+	OR (S10_MoveOut_LS AND NOT(S10_MoveOut_SOL))) THEN
+	S10_Up_SOL:=TRUE;
+END_IF;
+(*SET_(預鎖上1)*)
+IF (R_TRIG_2.Q  OR Autoflow=3 OR Autoflow=7 OR Autoflow=18 ) AND interlockdown 
+	AND ((S10_MoveBack_LS AND NOT(S10_MoveBack_SOL)) 
+	OR (S10_MoveOut_LS AND NOT(S10_MoveOut_SOL)))THEN
+	S10_Up_SOL:=TRUE;
+	UpDownStatus1:=TRUE;
+END_IF;
+(*RESET*)
+TON_14(IN:= UpDownStatus1 ,PT:= t#100ms );	
+IF 	TON_14.Q OR Initflow=4 THEN
+	S10_Up_SOL:=FALSE;
+	UpDownStatus1:=FALSE;
+END_IF;
+(*SET_(預鎖下2)*)
+IF (R_TRIG_1.Q  OR Autoflow=5 OR Autoflow=13 ) AND interlockdown 
+	AND ((S10_MoveBack_LS AND NOT(S10_MoveBack_SOL)) 
+	OR (S10_MoveOut_LS AND NOT(S10_MoveOut_SOL))) THEN
+	S10_Down_SOL:=TRUE;
+END_IF;
+(*SET_(預鎖上2)*)
+IF (R_TRIG_2.Q  OR Autoflow=3 OR Autoflow=7 OR Autoflow=18 ) AND interlockdown 
+	AND ((S10_MoveBack_LS AND NOT(S10_MoveBack_SOL)) 
+	OR (S10_MoveOut_LS AND NOT(S10_MoveOut_SOL)))THEN
+	S10_Down_SOL:=TRUE;
+END_IF;
+(*RESET*)
+R_TRIG_3(_CLK:= S10_Down_LS);
+IF (S10_Down_SOL AND S10_Up_SOL AND S10_MoveOut_LS AND R_TRIG_3.Q) 
+	OR TON_14.Q
+	OR Initflow=4 THEN
+	S10_Down_SOL:=FALSE;
+END_IF;
+(*SET_夾取*)
+R_TRIG_4(_CLK:= S10_Clip_PB);
+IF (R_TRIG_4.Q AND NOT(ClipStatus)) OR Autoflow=7 THEN
+	S10_Clip_SOL:=TRUE;
+END_IF;
+(*RESET_夾取*)
+IF (R_TRIG_4.Q AND ClipStatus) OR Autoflow=17 OR Initflow=3 THEN
+	S10_Clip_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+ClipStatus:=S10_Clip_SOL;
+(*SET_移位歸*)
+R_TRIG_5(_CLK:= S10_MoveBack_PB);
+interlockMove:=S10_Up_LS AND NOT(S10_Up_SOL);
+IF R_TRIG_5.Q OR Autoflow=4 OR Autoflow=19 OR  Initflow=5 AND interlockMove THEN
+	S10_MoveBack_SOL:=TRUE;
+	S10_MoveOut_SOL:=FALSE;
+END_IF;
+(*RESET_移位歸*)
+IF S10_MoveBack_LS THEN
+	S10_MoveBack_SOL:=FALSE;
+END_IF;
+(*SET_移位出*)
+R_TRIG_6(_CLK:= S10_MoveOut_PB);
+IF R_TRIG_6.Q OR Autoflow=12 AND interlockMove THEN
+	S10_MoveOut_SOL:=TRUE;
+	S10_MoveBack_SOL:=FALSE;
+END_IF;
+(*RESET_移位出*)
+IF S10_MoveOut_LS THEN
+	S10_MoveOut_SOL:=FALSE;
+END_IF;
+(*SET_預鎖正轉*)
+R_TRIG_7(_CLK:= S10_PreLockFW_PB);
+IF (R_TRIG_7.Q AND NOT(FWStatus)) OR Autoflow=16 AND NOT(S10_MotorRW_RY) THEN
+	S10_MotorFW_RY:=TRUE;
+END_IF;
+(*RESET_預鎖正轉*)
+IF (R_TRIG_7.Q AND FWStatus) OR Autoflow=17 OR Initflow=2 THEN
+	S10_MotorFW_RY:=FALSE;
+END_IF;
+(*STATUS*)
+FWStatus:=S10_MotorFW_RY;
+(*SET_預鎖反轉*)
+R_TRIG_8(_CLK:= S10_PreLockRW_PB);
+IF (R_TRIG_8.Q AND NOT(RWStatus)) OR Autoflow=14 AND NOT(S10_MotorFW_RY) THEN
+	S10_MotorRW_RY:=TRUE;
+END_IF;
+(*RESET_預鎖反轉*)
+IF (R_TRIG_8.Q AND RWStatus) OR Autoflow=15 OR Initflow=2  THEN
+	S10_MotorRW_RY:=FALSE;
+END_IF;
+(*STATUS*)
+RWStatus:=S10_MotorRW_RY;
+(********************************************************************)
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Initflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF Initflow=0 THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=4 AND  S10_MoveBack_LS  THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=1 THEN		(*IDLE狀態*)
+	InitIdle[10]:=TRUE;
+	ELSE
+	InitIdle[10]:=FALSE;
+END_IF;
+(*馬達停止=2*)
+F_TRIG_1(_CLK:= ErrorStatus[10]);
+R_TRIG_9(_CLK:= AutoStatus );
+R_TRIG_11(_CLK:= NOT(EStopPB));
+IF Initflow=1 AND (F_TRIG_1.Q OR Manual2AutoFlag OR R_TRIG_11.Q ) THEN
+	Initflow:=2;
+END_IF;
+(*夾取歸=3*)
+IF Initflow=2 AND NOT(S10_MotorFW_RY) AND NOT(S10_MotorRW_RY) THEN
+	Initflow:=3;
+END_IF;
+(*上下回=4*)
+IF Initflow=3 AND NOT(S10_Clip_SOL) THEN
+	Initflow:=4;
+END_IF; 
+(*移位歸=5*)
+IF Initflow=4 AND S10_Up_LS THEN
+	Initflow:=5;
+END_IF; 

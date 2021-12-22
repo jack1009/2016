@@ -1,0 +1,92 @@
+<diffgr:diffgram xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" xmlns:diffgr="urn:schemas-microsoft-com:xml-diffgram-v1">
+  <DSPROJECT>
+    <D_Project diffgr:id="D_Project1" msdata:rowOrder="0" diffgr:hasChanges="inserted">
+      <iID>1</iID>
+      <szName>2017_0504</szName>
+      <dtCreateDate>2017-05-04T15:01:14.0094261+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project2" msdata:rowOrder="1" diffgr:hasChanges="inserted">
+      <iID>2</iID>
+      <szName>2017_0518</szName>
+      <dtCreateDate>2017-05-18T11:33:51.9852105+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project3" msdata:rowOrder="2" diffgr:hasChanges="inserted">
+      <iID>3</iID>
+      <szName>2017_0521</szName>
+      <dtCreateDate>2017-05-21T22:11:40.9781705+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project4" msdata:rowOrder="3" diffgr:hasChanges="inserted">
+      <iID>4</iID>
+      <szName>2017_0525</szName>
+      <dtCreateDate>2017-05-27T21:12:20.9456664+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project5" msdata:rowOrder="4" diffgr:hasChanges="inserted">
+      <iID>5</iID>
+      <szName>2017_0525_1</szName>
+      <dtCreateDate>2017-05-28T12:50:44.8906919+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project6" msdata:rowOrder="5" diffgr:hasChanges="inserted">
+      <iID>6</iID>
+      <szName>2017_0528</szName>
+      <dtCreateDate>2017-05-28T13:28:10.3577337+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project7" msdata:rowOrder="6" diffgr:hasChanges="inserted">
+      <iID>7</iID>
+      <szName>2017_0601</szName>
+      <dtCreateDate>2017-06-01T11:08:45.1967582+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project8" msdata:rowOrder="7" diffgr:hasChanges="inserted">
+      <iID>8</iID>
+      <szName>2017_0609</szName>
+      <dtCreateDate>2017-06-09T16:35:59.4602099+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project9" msdata:rowOrder="8" diffgr:hasChanges="inserted">
+      <iID>9</iID>
+      <szName>2017_0610</szName>
+      <dtCreateDate>2017-06-09T20:01:09.3951712+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project10" msdata:rowOrder="9" diffgr:hasChanges="inserted">
+      <iID>10</iID>
+      <szName>2017_0615</szName>
+      <dtCreateDate>2017-06-15T16:33:31.8102235+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project11" msdata:rowOrder="10" diffgr:hasChanges="inserted">
+      <iID>11</iID>
+      <szName>2017_0707</szName>
+      <dtCreateDate>2017-07-07T12:21:09.321728+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_Project diffgr:id="D_Project12" msdata:rowOrder="11" diffgr:hasChanges="inserted">
+      <iID>12</iID>
+      <szName>2017_1012</szName>
+      <dtCreateDate>2017-10-12T11:11:15.1460119+08:00</dtCreateDate>
+      <iProjectAttributeID>1</iProjectAttributeID>
+      <bUserManage>false</bUserManage>
+    </D_Project>
+    <D_DBVersion diffgr:id="D_DBVersion2" msdata:rowOrder="0" diffgr:hasChanges="inserted">
+      <iSupportVersion>1</iSupportVersion>
+      <iCreateVersion>1</iCreateVersion>
+    </D_DBVersion>
+  </DSPROJECT>
+</diffgr:diffgram>

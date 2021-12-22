@@ -1,0 +1,82 @@
+(******************************************************************)
+(*程式:Station Control Program
+作者:Jack Tsai
+版本資訊:V1.0		2017/1/3*)
+
+(*PowerOn=0*)
+(*Idle=1*)
+(*檢查開始=2*)
+(*檢查完成=3*)
+(******************************************************************)
+(*本站狀態判斷*)
+IF IndexData[2].OKFlag[2]
+	OR IndexData[2].NGFlag[2] THEN
+	IndexData[2].FinishFlag[2]:=TRUE;
+END_IF;
+(*
+IF NOT(IndexData[2].FinishFlag[1]
+AND IndexData[2].OKFlag[1]
+AND NOT(IndexData[2].NGFlag[1])) THEN
+IndexData[2].NGFlag[2]:=TRUE;
+END_IF;
+*)
+IF DisablePB[2] AND
+	IndexData[2].FinishFlag[1] AND
+	IndexData[2].OKFlag[1] AND
+	NOT(IndexData[2].NGFlag[1]) THEN
+	IndexData[2].OKFlag[2]:=TRUE;
+END_IF;
+
+Rtrig_test(_CLK:=TestPB[2]);
+(*
+(清線處理)
+IF MachineRunStatus AND DisablePB[2] THEN
+	IF NOT(IndexData[2].OKFlag[2]) THEN
+		IndexData[2].NGFlag[2]:=TRUE;
+		IndexData[2].OKFlag[2]:=FALSE;
+	END_IF;
+END_IF;
+*)
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Autoflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF AutoFlow=0 AND SystemReadyStatus THEN
+	AutoFlow:=1;
+END_IF;
+ORGFlag[2]:=AutoStatus;
+IF Autoflow=1 THEN		(*IDLE狀態*)
+	AutoIdle[2]:=TRUE;
+	ELSE
+	AutoIdle[2]:=FALSE;
+END_IF;
+
+(*檢查開始=2*)
+IF Autoflow=1
+	AND AutoStatus
+	AND NOT(DisablePB[2])
+	AND ORGFlag[2]
+	AND ((MachineRunStatus
+	AND NOT(IndexData[2].FinishFlag[2]))
+	OR Rtrig_test.Q) THEN
+	Autoflow:=2;
+END_IF;
+
+TON_1(IN:= Autoflow=2 AND S2_Body_SNR AND S2_Cap_SNR AND S2_BodySafe_SNR AND S2_KnobSafe_SNR  ,PT:= t#1s);
+IF TON_1.Q THEN
+	IndexData[2].OkFlag[2]:=TRUE;
+END_IF;
+TON_2(IN:= (NOT(S2_Body_SNR) OR NOT(S2_Cap_SNR)) AND Autoflow=2 ,PT:= t#1s);
+IF TON_2.Q THEN
+	IndexData[2].NgFlag[2]:=TRUE;
+END_IF;
+IF Autoflow=2 AND (IndexData[2].OkFlag[2] OR IndexData[2].NgFlag[2]) THEN
+	Autoflow:=3;
+END_IF;
+
+(*檢查完成=3*)
+IF Autoflow=3 AND IndexData[2].FinishFlag[2] THEN
+	Autoflow:=1;
+END_IF;

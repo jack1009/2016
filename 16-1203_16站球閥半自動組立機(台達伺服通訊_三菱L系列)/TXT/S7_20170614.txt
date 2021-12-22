@@ -1,0 +1,275 @@
+(******************************************************************
+程式:Station 7 Control Program
+作者Andy Wang
+版本資訊:v1.0		2017/04/05
+********************************************************************
+控制程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*上下出1=2*)
+(*吸取開=3*)
+(*上下回1=4*)
+(*吸取OK=5     ----------------吸取NG=20*)
+(*移位出=6                           |     *)
+(*上下出2=7*)                (*吸取關2=21*)
+(*吸取關1=8*)
+(*上下回2=9*)
+(*移位歸=10*)
+(*吸取異常在吸取一次=12*)
+(********************************************************************
+復歸程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*吸取關=2*)
+(*上下回=3*)
+(*移位歸=4*)
+(******************************************************************/
+(*本站狀態判斷*)
+IF IndexData[7].OKFlag[7]
+	OR IndexData[7].NGFlag[7] THEN
+	IndexData[7].FinishFlag[7]:=TRUE;
+END_IF;
+
+IF NOT(IndexData[7].FinishFlag[6]
+	AND IndexData[7].OKFlag[6]
+	AND NOT(IndexData[7].NGFlag[6])) THEN
+	IndexData[7].NGFlag[7]:=TRUE;
+END_IF;
+
+IF DisablePB[7] AND IndexData[7].FinishFlag[6] AND IndexData[7].OKFlag[6] AND NOT(IndexData[7].NGFlag[6]) THEN
+	IndexData[7].OKFlag[7]:=TRUE;
+END_IF;
+
+Rtrig_test(_CLK:=TestPB[7]);
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Autoflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF AutoFlow=0 AND SystemReadyStatus AND NOT(ErrorStatus[7]) AND EStopPB THEN
+	AutoFlow:=1;
+END_IF;
+ORGFlag[7]:=AutoStatus AND S7_Up_LS
+            AND S7_MoveBack_LS ;
+
+IF Autoflow=5 AND S7_Up_LS AND S7_Vacuum_SNR THEN
+	Autoflow:=1;
+END_IF;
+
+IF Autoflow=1 THEN		(*IDLE狀態*)
+	AutoIdle[7]:=TRUE;
+	ELSE
+	AutoIdle[7]:=FALSE;
+END_IF;
+(*上下出=2*)
+IF Autoflow=1
+	AND AutoStatus
+	AND NOT(Error_S7_Vacuum)
+	AND NOT(DisablePB[7])
+	AND ORGFlag[7]
+	AND S7_THTurnBack_LS
+	AND NOT(S7_THTurnOut_SOL)
+	AND (MachineRunStatus AND NOT(IndexData[7].FinishFlag[7]) AND IndexData[7].FinishFlag[6] AND IndexData[7].OKFlag[6] AND NOT(IndexData[7].NGFlag[6])
+	OR Rtrig_test.Q) THEN
+	Autoflow:=2;
+END_IF;
+(*吸取開=3*)
+IF Autoflow=2 AND S7_Updown_LS3 THEN
+	Autoflow:=3;
+END_IF;
+(*上下回1=4*)
+TON_1(IN:= (AUtoflow=3 )  AND S7_Vacuum_SNR  ,PT:=t#200ms );
+TON_2(IN:= (AUtoflow=3)  AND NOT(S7_Vacuum_SNR) AND  ErrorCounter<1 ,PT:=t#400ms );
+IF Autoflow=3 AND TON_1.Q   THEN
+	Autoflow:=4;
+	FeedStart[7]:=TRUE;
+END_IF;
+IF FeedFinish[7] THEN
+	FeedStart[7]:=FALSE;
+	END_IF;
+(*吸取異常在吸取一次=12*)
+IF Autoflow=3 AND TON_2.Q  AND ErrorCounter<1  THEN
+	ErrorCounter:=ErrorCounter+1;
+        Autoflow:=12;
+END_IF;
+
+IF Autoflow=12 AND S7_Up_LS THEN
+        Autoflow:=2;
+	END_IF;
+
+(*吸取異常*)
+TON_6(IN:= (AUtoflow=3)  AND NOT(S7_Vacuum_SNR) AND  ErrorCounter>=1 ,PT:=t#600ms );
+IF Autoflow=3 AND TON_6.Q   THEN
+	Error_S7_Vacuum:=TRUE;
+	ErrorCounter:=0;
+        Autoflow:=11;
+END_IF;
+IF ResetPB THEN
+	Error_S7_Vacuum:=FALSE;
+END_IF;
+
+(*吸取OK=5*)
+IF Autoflow=4 AND S7_Up_LS  THEN
+	Autoflow:=5;
+	ErrorCounter:=0;
+END_IF;
+(*吸取NG=20*)
+IF Autoflow=11 AND Error_S7_Vacuum AND NOT(S7_Vacuum_SNR) AND S7_Up_LS THEN
+	Autoflow:=20;
+END_IF;
+(*吸取關2=21*)
+IF Autoflow=20 THEN
+	Autoflow:=21;
+END_IF;
+(*吸取異常2*)
+IF Autoflow>5 AND Autoflow<7 AND NOT(S7_Vacuum_SNR) THEN
+		IndexData[7].NgFlag[7]:=TRUE;
+	IndexData[7].ErrorRecordData[7]:=4;
+		Autoflow:=21;
+END_IF;
+(*移位出=2*)
+IF Autoflow=1
+	AND AutoStatus
+	AND NOT(Error_S7_Vacuum)
+	AND NOT(DisablePB[7])
+	AND ORGFlag[7]
+	AND S7_THTurnBack_LS
+	AND NOT(S7_THTurnOut_SOL)
+        AND NOT(S7_Vacuum_SNR) 
+	AND (MachineRunStatus AND NOT(IndexData[7].FinishFlag[7]) AND IndexData[7].FinishFlag[6] AND IndexData[7].OKFlag[6] AND NOT(IndexData[7].NGFlag[6])
+	OR Rtrig_test.Q ) THEN
+	Autoflow:=2;
+END_IF;
+
+(*移位出=6*)
+IF Autoflow=5 AND S7_Vacuum_SNR    THEN
+	Autoflow:=6;
+END_IF;
+(*上下出2=7*)
+TON_3(IN:= Autoflow=6 AND S7_MoveOut_LS ,PT:=t#100ms );
+IF Autoflow=6 AND TON_3.Q AND S7_Vacuum_SNR	THEN
+	Autoflow:=7;
+       IndexData[7].OkFlag[7]:=TRUE;
+END_IF;
+TON_5(IN:= Autoflow=7 AND S7_Down_LS ,PT:=t#100ms );
+(*吸取關1=8*)
+IF (Autoflow=7 AND IndexData[7].OkFlag[7] AND TON_5.Q) OR (Autoflow=21 ) THEN
+	Autoflow:=8;
+END_IF;
+(*上下回2=9*)
+IF Autoflow=8 AND NOT(S7_Vacuum_SNR) AND NOT(S7_Vacuum_SOL)  THEN
+	Autoflow:=9;
+END_IF;
+(*移位歸=10*)
+IF Autoflow=9 AND S7_Up_LS AND NOT(S7_Break_SOL) THEN
+	Autoflow:=10;
+END_IF;
+(*************************************************************************)
+(*Error*)
+IF NOT(SystemReadyStatus) OR ErrorStatus[7] OR NOT(EStopPB)  THEN
+	IF NOT(IndexData[7].OKFlag[7]) THEN
+		IndexData[7].NGFlag[7]:=TRUE;
+	END_IF;
+	Autoflow:=0;
+END_IF;
+(*次數異常
+IF ResetPB THEN
+ErrorCounter:=0;
+END_IF;
+IF ErrorCounter>=2 THEN
+CountError[7]:=TRUE;
+END_IF;*)
+(*手動*)
+(*上下*)
+R_TRIG_1(_CLK:= S7_UpDown_PB);
+interlockdown:=(Index_LS AND NOT(Index_RY) AND S7_MoveOut_LS AND NOT(S7_MoveBack_SOL))
+             OR (S7_MoveBack_LS AND NOT(S7_MoveOut_SOL) AND S7_THTurnBack_LS) ;
+(*SET*)
+IF ((R_TRIG_1.Q AND NOT(UpDownStatus)) OR Autoflow=2 OR Autoflow=7 ) AND interlockdown THEN
+	S7_UpDown_SOL:=TRUE;
+END_IF;
+(*RESET*)
+interlockUp:=TRUE;
+IF ((R_TRIG_1.Q AND (UpDownStatus)) OR Autoflow=4 OR Autoflow=9 OR Initflow=3 OR Autoflow=12 OR Autoflow=11 ) AND interlockUp THEN
+	S7_UpDown_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+UpDownStatus:=S7_UpDown_SOL;
+(*吸取*)
+(*SET*)
+R_TRIG_2(_CLK:= S7_Vacuum_PB);
+IF ((R_TRIG_2.Q AND NOT(VacuumStatus)) OR Autoflow=3 ) THEN
+	S7_Vacuum_SOL:=TRUE;
+END_IF;
+(*RESET*)
+interlockUp:=TRUE;
+IF ((R_TRIG_2.Q AND (VacuumStatus)) OR Autoflow=8 OR Initflow=2) THEN
+	S7_Vacuum_SOL:=FALSE;
+	S7_Break_SOL:=TRUE;
+END_IF;
+TON_4(IN:= S7_Break_SOL  ,PT:=t#500ms );
+IF (TON_4.Q AND NOT(AutoStatus)) OR Autoflow=9 OR Initflow=3 THEN
+	S7_Break_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+VacuumStatus:=S7_Vacuum_SOL;
+(*移位歸*)
+R_TRIG_3(_CLK:= S7_MoveBack_PB);
+interlockMove:=S7_Up_LS AND NOT(S7_UpDown_SOL);
+(*SET*)
+IF interlockMove AND (R_TRIG_3.Q OR Autoflow=10 OR Initflow=4) THEN
+	S7_MoveBack_SOL:=TRUE;
+	S7_MoveOut_SOL:=FALSE;
+END_IF;
+(*RESET*)
+IF S7_MoveBack_LS THEN
+	S7_MoveBack_SOL:=FALSE;
+END_IF;
+(*移位出*)
+R_TRIG_4(_CLK:= S7_MoveOut_PB);
+interlockMove:=S7_Up_LS AND NOT(S7_UpDown_SOL);
+(*SET*)
+IF interlockMove AND (R_TRIG_4.Q OR Autoflow=6) THEN
+	S7_MoveOut_SOL:=TRUE;
+	S7_MoveBack_SOL:=FALSE;
+END_IF;
+(*RESET*)
+IF S7_MoveOut_LS THEN
+	S7_MoveOut_SOL:=FALSE;
+END_IF;
+(********************************************************************)
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Initflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF Initflow=0 THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=4 AND S7_MoveBack_LS THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=1 THEN		(*IDLE狀態*)
+	InitIdle[7]:=TRUE;
+	ELSE
+	InitIdle[7]:=FALSE;
+END_IF;
+(*吸取關=2*)
+F_TRIG_1(_CLK:= ErrorStatus[7]);
+R_TRIG_5(_CLK:= AutoStatus );
+R_TRIG_6(_CLK:= NOT(EStopPB));
+IF Initflow=1 AND (F_TRIG_1.Q OR R_TRIG_5.Q OR R_TRIG_6.Q ) THEN
+	Initflow:=2;
+END_IF;
+(*上下回=3*)
+IF Initflow=2 AND NOT(S7_Vacuum_SNR) THEN
+	Initflow:=3;
+END_IF;
+(*移位歸=4*)
+IF Initflow=3 AND S7_Up_LS THEN
+	Initflow:=4;
+END_IF;

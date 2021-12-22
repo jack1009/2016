@@ -1,0 +1,6 @@
+1-不知發生哪個異常時,(Station08_鎖付)的(prScrewFlow)的AutoFlow會停留在2無法回Idle,第一站也發生過一樣的情形
+我在猜測因該是發生異常(ErrorStatus[8])時(prScrewFlow)的AutoFlow沒回idle
+2-當運轉中按下即停時有些站無法復歸
+3-CDD-檢測方式需再更換
+4-第二站圓盤節流異常時,現場希望按復歸健後,節流能復歸回原點
+5-第5站節流 機構位置更改所以將原本有卡節流的信號全拿掉(prSupplier的FEED_S5)

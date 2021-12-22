@@ -1,0 +1,9 @@
+(*dnFwSpeedValue_OUT=正轉速度(計算結果浮點數)*)
+(*dnReleaseSpeedValue_OUT=反轉鬆脫轉速度(計算結果浮點數)*)
+(*dnRwSpeedValue_OUT=閥蓋反轉轉速度(計算結果浮點數)*)
+
+
+dnFwTorqueValue_OUT:=dnFwTorqueValue_IN*CalValue*32000/(GearRate*MotorTorque_100);
+dnReleaseTorqueValue_OUT:=dnReleaseTorqueValue_IN*CalValue*32000/(GearRate*MotorTorque_100);
+dnRwTorqueValue_OUT:=dnRwTorqueValue_IN*CalValue*32000/(GearRate*MotorTorque_100);
+dnTorqueValue_OUT:=dnTorqueValue_IN*(GearRate*MotorTorque_100)/CalValue;

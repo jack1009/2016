@@ -1,0 +1,329 @@
+(******************************************************************)
+(*程式:Station 5 Control Program
+作者Andy Wang
+版本資訊:v1.0		2017/04/05
+*********************************************************************)
+(*控制程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*上下1出=2*)
+(*夾取出=3*)
+(*上下1回=4*)
+(*移位翻轉出1=5*)
+(*移位翻轉出2=6*)
+(*上下2出=7*)
+(*翻轉回=8*)
+(*入閥桿出=9  --------------*)
+(*入閥桿OK夾取歸=10*)         (*入閥桿NG入閥桿歸2=20*)
+(*入閥桿歸1=11*)              (*入閥桿NG入閥桿2出=21*)
+(*上下2回=12*)
+(*移位歸2=13*)
+(*********************************************************************)
+(*復歸程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*夾取歸=2*)
+(*入閥桿歸=3*)
+(*上下回=4*)
+(*移位歸=5*)
+(******************************************************************)
+(*本站狀態判斷*)
+IF IndexData[5].OKFlag[5]
+	OR IndexData[5].NGFlag[5] THEN
+	IndexData[5].FinishFlag[5]:=TRUE;
+END_IF;
+
+IF NOT(IndexData[5].FinishFlag[4]
+	AND IndexData[5].OKFlag[4]
+	AND NOT(IndexData[5].NGFlag[4])) THEN
+	IndexData[5].NGFlag[5]:=TRUE;
+END_IF;
+
+IF DisablePB[5] AND IndexData[5].FinishFlag[2] AND IndexData[5].OKFlag[2] AND NOT(IndexData[5].NGFlag[2]) THEN
+	IndexData[5].OKFlag[5]:=TRUE;
+END_IF;
+
+Rtrig_test(_CLK:=TestPB[5]);
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Autoflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF AutoFlow=0 AND SystemReadyStatus AND NOT(ErrorStatus[5]) AND EStopPB THEN
+	AutoFlow:=1;
+END_IF;
+ORGFlag[5]:=AutoStatus
+AND S5_Up_LS
+AND S5_MoveBack_LS 
+AND S5_InstallBack_LS
+AND S5_TurnBack_LS
+AND NOT(S5_Clip_SOL);
+
+IF Autoflow=13 AND S5_MoveBack_LS THEN
+	Autoflow:=1;
+END_IF;
+IF Autoflow=5 AND S5_MoveOut_LS THEN
+	Autoflow:=1;
+END_IF;
+
+IF Autoflow=1 THEN		(*IDLE狀態*)
+	AutoIdle[5]:=TRUE;
+	ELSE
+	AutoIdle[5]:=FALSE;
+END_IF;
+(*上下出=2*)
+IF Autoflow=1
+	AND AutoStatus
+	AND NOT(DisablePB[5])
+	AND ORGFlag[5] 
+	AND ((MachineRunStatus AND NOT(IndexData[5].FinishFlag[5])
+	AND IndexData[5].FinishFlag[4]
+	AND IndexData[5].OKFlag[4]
+	AND NOT(IndexData[5].NGFlag[4]))
+	OR (IndexData[4].FinishFlag[4]
+	AND IndexData[4].OKFlag[4]
+	AND NOT(IndexData[4].NGFlag[4])))
+	OR (Rtrig_test.Q AND  ORGFlag[5])  THEN
+	Autoflow:=2;
+END_IF;
+(*夾取出=3*)
+TON_1(IN:= Autoflow=2 AND S5_Down_LS ,PT:= t#200ms );
+IF Autoflow=2 AND TON_1.Q  THEN
+	Autoflow:=3;
+END_IF;
+(*上下1回=4*)
+TON_2(IN:= Autoflow=3 AND S5_Clip_SOL ,PT:= t#200ms );
+IF Autoflow=3 AND TON_2.Q  THEN
+	Autoflow:=4;
+END_IF;
+(*移位翻轉出1=5*)
+IF Autoflow=4 AND S5_Up_LS  THEN
+	Autoflow:=5;
+END_IF;
+(*送閥桿*)
+IF Autoflow=5 THEN
+	FeedStart[5]:=TRUE;
+END_IF;
+IF FeedFinish[5] THEN
+	FeedStart[5]:=FALSE;
+END_IF;
+(*移位翻轉出2=6*)
+IF Autoflow=1 AND S5_Clip_SOL 
+	AND S5_Up_LS
+	AND NOT (IndexData[5].FinishFlag[5])
+	AND IndexData[5].FinishFlag[4] 
+	AND IndexData[5].OKFlag[4] 
+	AND NOT(IndexData[5].NGFlag[4]) OR (Rtrig_test.Q AND S5_Clip_SOL)  THEN
+	Autoflow:=6;
+END_IF;
+(*上下2出=7*)
+IF Autoflow=6 AND S5_MoveOut_LS AND S5_TurnOut_LS THEN
+	Autoflow:=7;
+END_IF;
+(*翻轉回=8*)
+TON_3(IN:= Autoflow=7 AND S5_Down_LS ,PT:= t#200ms );
+IF Autoflow=7 AND TON_3.Q THEN
+	Autoflow:=8;
+END_IF;
+(*入閥桿出=9*)
+TON_4(IN:= Autoflow=8 AND S5_TurnBack_SOL ,PT:= t#200ms );
+IF (Autoflow=8 AND TON_4.Q) OR (Autoflow=21)  THEN
+	Autoflow:=9;
+	installcounter:=installcounter+1;
+END_IF;
+(*入閥桿判斷*)
+TON_5(IN:= Autoflow=9 AND S5_InstallOut_LS ,PT:= t#200ms );
+TON_6(IN:= Autoflow=9 AND NOT(S5_InstallOut_LS) ,PT:= t#1000ms );
+IF Autoflow=9 AND TON_5.Q THEN
+	IndexData[5].OkFlag[5]:=TRUE;
+        Autoflow:=14;
+END_IF;
+IF Autoflow=9 AND TON_6.Q AND installcounter>=2 THEN
+	IndexData[5].NgFlag[5]:=TRUE;
+	IndexData[5].ErrorRecordData[5]:=4;
+        Autoflow:=16;
+END_IF;
+
+IF Autoflow=9 AND TON_6.Q AND installcounter<2 THEN
+        Autoflow:=15;
+END_IF;
+
+(*入閥桿NG入閥桿歸2=20*)
+IF Autoflow=15  AND NOT(IndexData[5].NgFlag[5]) AND (installcounter<2) THEN
+	Autoflow:=20;
+END_IF;
+(*入閥桿NG入閥桿2出=21*)
+TON_7(IN:= Autoflow=20 AND S5_InstallBack_LS ,PT:= t#300ms );
+IF Autoflow=20 AND TON_7.Q THEN
+	Autoflow:=21;
+END_IF;
+(*入閥桿OK夾取歸=10*)
+IF (Autoflow=14 AND TON_5.Q) OR (ndexData[5].NgFlag[5] AND Autoflow=16)THEN
+	Autoflow:=10;
+	installcounter:=0;
+END_IF;
+(*入閥桿歸1=11*)  
+TON_8(IN:= Autoflow=10 AND NOT(S5_Clip_SOL) ,PT:= t#300ms );
+IF Autoflow=10 AND TON_8.Q THEN
+	Autoflow:=11;
+END_IF;
+(*上下2回=12*)
+IF Autoflow=11 AND NOT(S5_Install_SOL)THEN
+	Autoflow:=12;
+END_IF;
+(*移位歸2=13*)
+IF Autoflow=12 AND S5_Up_LS AND S5_InstallBack_LS  THEN
+	Autoflow:=13;
+END_IF;
+(*************************************************************************)
+(*Error*)
+IF NOT(SystemReadyStatus) OR ErrorStatus[5] OR NOT(EStopPB)  THEN
+	IF NOT(IndexData[5].OKFlag[5]) THEN
+		IndexData[5].NGFlag[5]:=TRUE;
+	END_IF;
+	Autoflow:=0;
+END_IF;
+(*次數異常*)
+(*IF ResetPB THEN
+ErrorCounter:=0;
+END_IF;
+IF ErrorCounter>=2 THEN
+CountError[5]:=TRUE;
+END_IF;*)
+(*手動*)
+(*上下*)
+R_TRIG_1(_CLK:= S5_UpDown_PB);
+interlockdown:=(Index_LS AND NOT(Index_RY) 
+                AND S5_MoveOut_LS AND NOT(S5_MoveBack_SOL) 
+				AND S5_InstallBack_LS AND NOT(S5_Install_SOL))
+				OR (S5_MoveBack_LS AND NOT(S5_MoveOut_SOL)
+				AND S5_THTurnBack_LS AND NOT(S5_THTurnOut_SOL) 
+				AND S5_InstallBack_LS AND NOT(S5_Clip_SOL));
+(*SET*)
+IF ((R_TRIG_1.Q AND NOT(UpDownStatus)) OR Autoflow=2 OR Autoflow=7) AND interlockdown THEN
+	S5_UpDown_SOL:=TRUE;
+END_IF;
+(*RESET*)
+interlockUp:=S5_InstallBack_LS AND NOT(S5_Install_SOL);
+IF ((R_TRIG_1.Q AND (UpDownStatus)) OR Autoflow=4  OR Autoflow=12 OR Initflow=4) AND interlockUp THEN
+	S5_UpDown_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+UpDownStatus:=S5_UpDown_SOL;
+(*夾取*)
+R_TRIG_2(_CLK:= S5_Clip_PB);
+(*SET*)
+IF ((R_TRIG_2.Q AND NOT(ClipStatus)) OR Autoflow=3)  THEN
+	S5_Clip_SOL:=TRUE;
+END_IF;
+(*RESET*)
+IF ((R_TRIG_2.Q AND (ClipStatus)) OR  Autoflow=10 OR Initflow=2)  THEN
+	S5_Clip_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+ClipStatus:=S5_Clip_SOL;
+(*移位歸*)
+R_TRIG_3(_CLK:= S5_MoveBack_PB);
+interlockMove:=S5_Up_LS AND NOT(S5_UpDown_SOL);
+(*SET*)
+IF interlockMove AND (R_TRIG_3.Q OR Autoflow=13 OR Initflow=5) THEN
+	S5_MoveBack_SOL:=TRUE;
+	S5_MoveOut_SOL:=FALSE;
+END_IF;
+(*RESET*)
+IF S5_MoveBack_LS THEN
+	S5_MoveBack_SOL:=FALSE;
+END_IF;
+(*移位出*)
+R_TRIG_4(_CLK:= S5_MoveOut_PB);
+interlockMove:=S5_Up_LS AND NOT(S5_UpDown_SOL);
+(*SET*)
+IF interlockMove AND (R_TRIG_4.Q OR Autoflow=5 OR Autoflow=6) THEN
+	S5_MoveOut_SOL:=TRUE;
+	S5_MoveBack_SOL:=FALSE;
+END_IF;
+(*RESET*)
+IF S5_MoveOut_LS THEN
+	S5_MoveOut_SOL:=FALSE;
+END_IF;
+(*入閥桿出*)
+R_TRIG_5(_CLK:= S5_Install_PB);
+interlockInsertOut:=(S5_MoveOut_LS AND NOT(S5_MoveBack_SOL) 
+AND (S5_Up_LS OR S5_Down_LS))
+OR (S5_MoveBack_LS AND NOT(S5_MoveOut_SOL)AND S5_Up_LS AND NOT(S5_UpDown_SOL));
+(*SET*)
+IF ((R_TRIG_5.Q AND NOT(Installstatus)) OR Autoflow=9) AND interlockInsertOut THEN
+	S5_Install_SOL:=TRUE;
+END_IF;
+(*RESET*)
+interlockInsertBack:=TRUE;
+IF ((R_TRIG_5.Q AND (Installstatus)) OR Autoflow=11  OR Autoflow=20 OR Initflow=3) AND interlockInsertBack THEN
+	S5_Install_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+Installstatus:=S5_Install_SOL;
+(*翻轉歸*)
+R_TRIG_6(_CLK:= S5_TurnBack_PB);
+interlockTurnBack:=(S5_Up_LS AND NOT(S5_UpDown_SOL)) OR (S5_MoveOut_LS AND NOT(S5_MoveBack_SOL)) ;
+(*SET*)
+IF interlockTurnBack AND (R_TRIG_6.Q OR Autoflow=8 OR Initflow=5) THEN
+	S5_TurnBack_SOL:=TRUE;
+	S5_TurnOut_SOL:=FALSE;
+END_IF;
+(*RESET*)
+IF S5_TurnBack_LS THEN
+	S5_TurnBack_SOL:=FALSE;
+END_IF;
+(*翻轉出*)
+R_TRIG_7(_CLK:= S5_TurnOut_PB);
+interlockTurnOut:=S5_Up_LS AND NOT(S5_UpDown_SOL) ;
+(*SET*)
+IF interlockTurnOut AND (R_TRIG_7.Q OR Autoflow=5 OR Autoflow=6) THEN
+	S5_TurnOut_SOL:=TRUE;
+	S5_TurnBack_SOL:=FALSE;
+END_IF;
+(*RESET*)
+IF S5_TurnOut_LS THEN
+	S5_TurnOut_SOL:=FALSE;
+END_IF;
+(********************************************************************)
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Initflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF Initflow=0 THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=5 AND S5_MoveBack_LS THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=1 THEN		(*IDLE狀態*)
+	InitIdle[5]:=TRUE;
+	ELSE
+	InitIdle[5]:=FALSE;
+END_IF;
+(*夾取歸=2*)
+F_TRIG_1(_CLK:= ErrorStatus[5]);
+R_TRIG_8(_CLK:= AutoStatus );
+R_TRIG_9(_CLK:= NOT(EStopPB));
+IF Initflow=1 AND (F_TRIG_1.Q OR R_TRIG_8.Q OR R_TRIG_9.Q ) THEN
+	Initflow:=2;
+END_IF;
+(*入閥桿歸=3*)
+TON_9(IN:= Initflow=2 AND NOT(S5_Clip_SOL) ,PT:= t#300ms );
+IF Initflow=2 AND TON_9.Q THEN
+	Initflow:=3;
+END_IF;
+(*上下回=4*)
+IF Initflow=3 AND S5_InstallBack_LS THEN
+Initflow:=4;
+END_IF;
+(*移位歸=5*)
+IF Initflow=4 AND S5_Up_LS THEN
+	Initflow:=5;
+END_IF;

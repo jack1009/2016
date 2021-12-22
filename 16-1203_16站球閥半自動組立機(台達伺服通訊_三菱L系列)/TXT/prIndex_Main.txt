@@ -1,0 +1,177 @@
+(******************************************************************
+程式:INDEX Program
+作者Andy Wang
+版本資訊:v1.0		2017/04/05
+********************************************************************)
+(*控制程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*轉盤定位出=2*)                     
+(*轉盤啟動=3*)                  
+(*轉盤運轉中=4*)                
+(*轉盤停止=5*)
+(*轉盤定位歸=6*)
+(*轉盤延時啟動=7*)               
+(********************************************************************)
+(*PowerOn=0*)
+TON_1(IN:=AutoFlow=0 , PT:=t#1s);
+IF AutoFlow=0 AND TON_1.Q THEN
+	AutoFlow:=1;
+END_IF;
+(*Idle=1*)
+IndexDataOK:=
+IndexData[1].FinishFlag[1]
+AND IndexData[2].FinishFlag[2]
+AND IndexData[3].FinishFlag[3]
+AND IndexData[4].FinishFlag[4]
+AND IndexData[5].FinishFlag[5]
+AND IndexData[6].FinishFlag[6]
+AND IndexData[7].FinishFlag[7]
+AND IndexData[8].FinishFlag[8]
+AND IndexData[9].FinishFlag[9]
+AND IndexData[10].FinishFlag[10]
+AND IndexData[11].FinishFlag[11]
+AND IndexData[12].FinishFlag[12]
+AND IndexData[13].FinishFlag[13]
+AND IndexData[14].FinishFlag[14]
+AND IndexData[15].FinishFlag[15];
+(*轉盤定位出=2*) 
+R_TRIG_1(_CLK:= Index_PB);
+IF Autoflow=1
+	AND ((MachineRunStatus	AND (IndexDataOK OR NOT(Index_LS)))	OR R_TRIG_1.Q ) THEN
+	Autoflow:=2;
+END_IF;
+(*轉盤起動=3*)
+IF Autoflow=2 AND IndexCanRunStatus  THEN
+	Autoflow:=3;
+END_IF;
+(*轉盤運轉中=4*)
+IF Autoflow=3 AND NOT(Index_LS) THEN
+	Autoflow:=4;
+END_IF;
+(*轉盤停止=5*)
+IF Autoflow=4 AND Index_LS  THEN
+	Autoflow:=5;
+END_IF;
+(*轉盤定位歸=5*)
+IF Autoflow=5 AND Index_LS AND NOT(Index_RY)  THEN
+	Autoflow:=6;
+END_IF;
+(*轉盤延時啟動=7*)    
+tDelayTimerSV:=WORD_TO_TIME(IndexRunDelayTime)*100;
+TON_3(IN:= Autoflow=6 AND IndexFixBack1_LS AND IndexFixBack2_LS ,PT:= tDelayTimerSV);
+IF Autoflow=6 AND TON_3.Q  THEN
+	Autoflow:=1;
+END_IF;
+(******************************************************************)
+(*異常*)
+IF IndexLS_Error OR 
+	Inverter_Error OR 
+	IndexSafe_SNR_Error OR 
+	S2_BodySafe_SNR_Error OR 
+	S2_KnobSafe_SNR_Error OR
+	S11_Safe_SNR_Error OR
+	NOT(EStopPB)  THEN
+	AutoFlow:=0;
+END_IF;
+(*INV異常*)
+IF SystemReadyStatus AND NOT(Inverter_SNR) THEN
+	Inverter_Error:=TRUE;
+END_IF;
+IF ResetPB THEN
+	Inverter_Error:=FALSE;
+END_IF;
+(*SNR異常*)
+TON_2(IN:= Index_RY ,PT:= t#6s);
+IF TON_2.Q THEN
+	IndexLS_Error:=TRUE;
+END_IF;
+IF ResetPB THEN
+	IndexLS_Error:=FALSE;
+END_IF;
+(*轉盤有異物*)
+IF SystemReadyStatus AND NOT(IndexSafe_SNR) THEN
+	IndexSafe_SNR_Error:=TRUE;
+END_IF;
+IF ResetPB THEN
+	IndexSafe_SNR_Error:=FALSE;
+END_IF;
+(*閥體過高*)
+IF SystemReadyStatus AND NOT(S2_BodySafe_SNR) AND Index_LS AND NOT(Index_RY) AND NOT(S11_Release_PB) THEN
+	S2_BodySafe_SNR_Error:=TRUE;
+END_IF;
+IF ResetPB THEN
+	S2_BodySafe_SNR_Error:=FALSE;
+END_IF;
+(*把手防呆*)
+IF SystemReadyStatus AND NOT(S2_KnobSafe_SNR) AND Index_LS AND NOT(Index_RY) THEN
+	S2_KnobSafe_SNR_Error:=TRUE;
+END_IF;
+IF ResetPB THEN
+	S2_KnobSafe_SNR_Error:=FALSE;
+END_IF;
+(*S11安全防呆*)
+IF SystemReadyStatus AND NOT(S11_Safe_SNR) AND Index_LS 
+	AND NOT(Index_RY) AND S11_Up_LS AND NOT(S11_UpDown_SOL) THEN
+	S11_Safe_SNR_Error:=TRUE;
+END_IF;
+IF ResetPB THEN
+	S11_Safe_SNR_Error:=FALSE;
+END_IF;
+(*輸出*)
+IndexCanRunStatus:=
+(IndexFixOut1_LS AND IndexFixOut2_LS AND NOT(IndexFixBACK1_SOL) AND NOT(IndexFixBACK2_SOL))AND
+((S3_Up_LS AND NOT(S3_UpDown_SOL))OR NOT(S3_MoveOut_LS)) AND
+(S4_Up_LS AND NOT(S4_UpDown_SOL) AND S4_LockBack_LS AND NOT(S4_Lock_SOL)) AND
+(S5_Up_LS AND NOT(S5_UpDown_SOL) OR NOT(S5_MoveOut_LS)) AND
+(S6_Up_LS AND NOT(S6_UpDown_SOL))AND
+(S7_Up_LS AND NOT(S7_UpDown_SOL) OR NOT(S7_MoveOut_LS)) AND
+(S8_Up_LS AND NOT(S8_UpDown_SOL))AND
+(S9_GlueMoveBack_LS AND NOT(S9_GlueMove_SOL)AND S9_Up_LS AND NOT(S9_UpDown_SOL))AND
+(S10_Up_LS AND NOT(S10_Up_SOL))AND
+(S11_Up_LS AND NOT(S11_UpDown_SOL) AND S11_CheckUp_LS AND NOT(S11_CheckUpDown_SOL))AND S11_LockBack_LS AND NOT(S11_Lock_SOL) AND
+(S12_Up_LS AND NOT(S12_UpDown_SOL) OR NOT(S12_MoveOut_LS))AND
+(S13_Up_LS AND NOT(S13_Down_SOL) OR NOT(S13_MoveOut_LS)) AND
+(S14_Up_LS AND NOT(S14_UpDown_SOL))AND
+((S15_PushBack_LS AND NOT(S15_Push_SOL)) AND (S15_MoveBack_LS AND NOT(S15_Move_SOL)) AND (S15_TurnBack_LS AND NOT(S15_TurnUpDown_SOL)));
+(*轉盤運轉*)
+IF Autoflow=3 OR Autoflow=4  THEN
+	Index_RY:=TRUE;
+	ELSE
+	Index_RY:=FALSE;
+END_IF;
+R_TRIG_2(_CLK:= IndexFixBack_PB );
+(*轉盤定位歸*)
+(*SET*)
+IF (Autoflow=6 OR R_TRIG_2.Q) AND Index_LS AND NOT(Index_RY) THEN
+	IndexFixOut1_SOL:=FALSE;
+	IndexFixOut2_SOL:=FALSE;
+	IndexFixBack1_SOL:=TRUE;
+	IndexFixBACK2_SOL:=TRUE;
+END_IF;
+(*RST*)
+IF IndexFixBack1_LS THEN
+	IndexFixBack1_SOL:=FALSE;
+END_IF;
+IF IndexFixBACK2_LS THEN
+	IndexFixBACK2_SOL:=FALSE;
+END_IF;
+
+(*轉盤定位出*) 
+R_TRIG_3(_CLK:= IndexFixOut_PB );
+(*SET*)
+IF  (R_TRIG_3.Q OR AutoFlow=2) AND Index_LS AND NOT(Index_RY) THEN
+	IndexFixOut1_SOL:=TRUE;
+	IndexFixOut2_SOL:=TRUE;
+	IndexFixBack1_SOL:=FALSE;
+	IndexFixBACK2_SOL:=FALSE;
+END_IF;
+(*RST*)
+IF IndexFixOut1_LS THEN
+	IndexFixOut1_SOL:=FALSE;
+END_IF;
+IF IndexFixOut2_LS THEN
+	IndexFixOut2_SOL:=FALSE;
+END_IF;
+
+

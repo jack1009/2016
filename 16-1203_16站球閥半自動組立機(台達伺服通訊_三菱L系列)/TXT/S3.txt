@@ -1,0 +1,236 @@
+(******************************************************************)
+(*程式:Station 3 Control Program
+作者Andy Wang
+版本資訊:v1.0		2017/04/05*)
+(********************************************************************)
+(*控制程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*上下出=2*)
+(*夾取出=3*)
+(*上下回=4*)
+(*移位出=6*)
+(*上下出=7*)
+(*夾取回=8*)
+(*上下回=9*)
+(*移位回=16#10*)
+(********************************************************************)
+(*復歸程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*夾取回=2*)
+(*上下回=3*)
+(*移位回=4*)
+(******************************************************************)
+(*本站狀態判斷*)
+IF IndexData[3].OKFlag[3]
+	OR IndexData[3].NGFlag[3] THEN
+	IndexData[3].FinishFlag[3]:=TRUE;
+END_IF;
+
+IF NOT(IndexData[2].FinishFlag[2]
+	AND IndexData[2].OKFlag[2]
+	AND NOT(IndexData[2].NGFlag[2])) THEN
+	IndexData[3].NGFlag[3]:=TRUE;
+END_IF;
+
+IF DisablePB[3] AND IndexData[2].FinishFlag[2] AND IndexData[2].OKFlag[2] AND NOT(IndexData[2].NGFlag[2]) THEN
+	IndexData[3].OKFlag[3]:=TRUE;
+END_IF;
+
+Rtrig_test(_CLK:=TestPB[3]);
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Autoflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF AutoFlow=0 AND SystemReadyStatus AND NOT(ErrorStatus[3]) AND EStopPB THEN
+	AutoFlow:=1;
+END_IF;
+ORGFlag[3]:=AutoStatus
+AND S3_Up_LS
+AND S3_MoveBack_LS
+AND S3_ClipBack_LS;
+
+IF Autoflow=16#10 AND S3_MoveBack_LS THEN
+	Autoflow:=1;
+END_IF;
+
+IF Autoflow=1 THEN		(*IDLE狀態*)
+	AutoIdle[3]:=TRUE;
+	ELSE
+	AutoIdle[3]:=FALSE;
+END_IF;
+(*上下出=2*)
+IF Autoflow=1
+	AND AutoStatus
+	AND NOT(DisablePB[3])
+	AND ORGFlag[3]
+	AND S3_Feed_SNR
+	AND NOT(S3_Feed_SNR_Error)
+	AND (MachineRunStatus AND NOT(IndexData[3].FinishFlag[3]) AND IndexData[2].FinishFlag[2] AND IndexData[2].OKFlag[2] AND NOT(IndexData[2].NGFlag[2])
+	OR Rtrig_test.Q) THEN
+	Autoflow:=2;
+END_IF;
+
+(*夾取出=3*)
+TON_2(IN:= Autoflow=2 AND S3_Down_LS ,PT:= t#100ms);
+IF Autoflow=2 AND TON_2.Q  THEN
+	Autoflow:=3;
+END_IF;
+
+(*上下回=4*)
+IF Autoflow=3 AND S3_ClipOut_LS  THEN
+	Autoflow:=4;
+END_IF;
+
+IF Autoflow=4 THEN
+FeedStart[3]:=TRUE;
+END_IF;
+IF FeedFinish[3] THEN
+FeedStart[3]:=FALSE;
+END_IF;
+
+(*IF Autoflow>4 AND Autoflow<7 AND S5_ClipCheck_SNR THEN
+	S5_ClipCheck_SNR_Error:=TRUE;
+END_IF;*)
+(*移位出=6*)
+IF Autoflow=4 AND S3_Up_LS  THEN
+	Autoflow:=6;
+END_IF;
+	
+(*上下出=7*)
+IF Autoflow=6 AND S3_MoveOut_LS  THEN
+	Autoflow:=7;
+END_IF;
+TON_1(IN:= Autoflow=7 AND S3_DoWN_LS AND S3_Check_SNR ,PT:= t#300ms);	(*成功*)
+IF TON_1.Q THEN
+	ErrorCounter:=0;
+	IndexData[3].OKFlag[3]:=TRUE;
+END_IF;
+	
+TON_4(IN:= Autoflow=7 AND (NOT(S3_Down_LS) OR NOT(S3_Check_SNR)) ,PT:= t#2000ms);	(*失敗*)
+IF TON_4.Q THEN
+	ErrorCounter:=ErrorCounter+1;
+	IndexData[3].NGFlag[3]:=TRUE;
+	IndexData[3].ErrorRecordData[3]:=4;
+END_IF;
+(*夾取回=8*)
+IF Autoflow=7 AND (TON_1.Q OR TON_4.Q)  THEN
+	Autoflow:=8;
+END_IF;
+	
+(*上下回=9*)
+IF Autoflow=8 AND S3_ClipBack_LS  THEN
+	Autoflow:=9;
+END_IF;
+	
+(*移位回=16#10*)
+IF Autoflow=9 AND S3_Up_LS THEN
+	Autoflow:=16#10;
+END_IF;
+	
+(********************************************************************)
+(*Error*)
+IF NOT(SystemReadyStatus) OR ErrorStatus[3] OR NOT(EStopPB)  THEN
+	IF NOT(IndexData[3].OKFlag[3]) THEN
+		IndexData[3].NGFlag[3]:=TRUE;
+	END_IF;
+	Autoflow:=0;
+END_IF;
+(*次數異常
+IF ResetPB THEN
+	ErrorCounter:=0;
+END_IF;
+IF ErrorCounter>=2 THEN
+	CountError[3]:=TRUE;
+END_IF;*)
+
+(*手動*)
+(*上下電磁閥*)
+R_TRIG_1(_CLK:=S3_UpDown_PB);
+interlockdown:=((S3_MoveBack_LS AND S3_ClipBack_LS AND NOT(S3_Clip_SOL)) OR (S3_MoveOut_LS AND Index_LS AND NOT(Index_RY))) AND NOT(S3_MoveBack_SOL) AND NOT(S3_MoveOut_SOL);
+interlockup:=TRUE;
+(*SET*)
+IF ((R_TRIG_1.Q AND NOT(updownStatus)) OR Autoflow=2 OR Autoflow=7) AND interlockdown THEN
+	S3_UpDown_SOL:=TRUE;
+END_IF;
+(*RESET*)
+IF ((R_TRIG_1.Q AND (updownStatus)) OR Autoflow=4 OR Autoflow=9 OR Initflow=3) AND interlockup THEN
+	S3_UpDown_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+updownStatus:=S3_UpDown_SOL;
+
+(*移位歸電磁閥*)
+interlockMoveBack:=S3_Up_LS AND NOT(S3_UpDown_SOL);
+
+IF (S3_MoveBack_PB OR Autoflow=16#10 OR Initflow=4) AND interlockMoveBack THEN
+	S3_MoveBack_SOL:=TRUE;
+	S3_MoveOut_SOL:=FALSE;
+END_IF;
+IF S3_MoveBack_LS THEN
+	S3_MoveBack_SOL:=FALSE;
+END_IF;
+
+(*移位出電磁閥*)
+interlockMoveOut:=S3_Up_LS AND NOT(S3_UpDown_SOL);
+
+IF (S3_MoveOut_PB OR Autoflow=6) AND interlockMoveOut THEN
+	S3_MoveBack_SOL:=FALSE;
+	S3_MoveOut_SOL:=TRUE;
+END_IF;
+IF S3_MoveOut_LS THEN
+	S3_MoveOut_SOL:=FALSE;
+END_IF;
+
+(*夾取電磁閥*)
+R_TRIG_2(_CLK:=S3_Clip_PB);
+(*SET*)
+IF ((R_TRIG_2.Q AND NOT(clipStatus)) OR Autoflow=3) THEN
+	S3_Clip_SOL:=TRUE;
+END_IF;
+(*RESET*)
+IF ((R_TRIG_2.Q AND (clipStatus)) OR Autoflow=8 OR Initflow=2) THEN
+	S3_Clip_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+clipStatus:=S3_Clip_SOL;
+(********************************************************************)
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Initflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF Initflow=0 THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=4 AND S3_MoveBack_LS THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=1 THEN		(*IDLE狀態*)
+	InitIdle[3]:=TRUE;
+	ELSE
+	InitIdle[3]:=FALSE;
+END_IF;
+(*夾取回=2*)
+F_TRIG_1(_CLK:= ErrorStatus[3]);
+R_TRIG_3(_CLK:= AutoStatus );
+R_TRIG_4(_CLK:= NOT(EStopPB));
+IF Initflow=1 AND (F_TRIG_1.Q OR R_TRIG_3.Q OR R_TRIG_4.Q ) THEN
+	Initflow:=2;
+END_IF;
+
+(*上下回=3*)
+IF Initflow=2 AND S3_ClipBack_LS THEN
+	Initflow:=3;
+END_IF;
+
+(*移位回=4*)
+IF Initflow=3 AND S3_Up_LS THEN
+	Initflow:=4;
+END_IF;

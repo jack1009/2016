@@ -1,0 +1,18 @@
+(*S3®¶°Êµ©*)
+Supply_S3(bFullSNR:=S3_Full_SNR ,iItemNotExistDelayTime:= S3_Full_NoObjectTimeSV,iItemExistTime:= S3_Full_ObjectExistTimeSV,
+	iItemNotExistErrorTime:= S3_Full_ObjectNotExistTimeSV,bFullRY:= S3_Supply_RY,bFullSNRError:= S3_Full_SNR_Error );
+(*S5®¶°Êµ©*)
+Supply_S5(bFullSNR:=S5_Full_SNR ,iItemNotExistDelayTime:= S5_Full_NoObjectTimeSV,iItemExistTime:= S5_Full_ObjectExistTimeSV,
+	iItemNotExistErrorTime:= S5_Full_ObjectNotExistTimeSV,bFullRY:= S5_Supply_RY,bFullSNRError:= S5_Full_SNR_Error );
+(*S7®¶°Êµ©*)
+Supply_S7(bFullSNR:=S7_Full_SNR ,iItemNotExistDelayTime:= S7_Full_NoObjectTimeSV,iItemExistTime:= S7_Full_ObjectExistTimeSV,
+	iItemNotExistErrorTime:= S7_Full_ObjectNotExistTimeSV,bFullRY:= S7_Supply_RY,bFullSNRError:= S7_Full_SNR_Error );
+(*S12®¶°Êµ©*)
+Supply_S12(bFullSNR:=S12_Full_SNR ,iItemNotExistDelayTime:= S12_Full_NoObjectTimeSV,iItemExistTime:= S12_Full_ObjectExistTimeSV,
+	iItemNotExistErrorTime:= S12_Full_ObjectNotExistTimeSV,bFullRY:= S12_Supply_RY,bFullSNRError:= S12_Full_SNR_Error );
+(*S13®¶°Êµ©*)
+Supply_S13(bFullSNR:=S13_Full_SNR ,iItemNotExistDelayTime:= S13_Full_NoObjectTimeSV,iItemExistTime:= S13_Full_ObjectExistTimeSV,
+	iItemNotExistErrorTime:= S13_Full_ObjectNotExistTimeSV,bFullRY:= S13_Supply_RY,bFullSNRError:= S13_Full_SNR_Error );
+(*S14®¶°Êµ©*)
+Supply_S14(bFullSNR:=S14_Full_SNR ,iItemNotExistDelayTime:= S14_Full_NoObjectTimeSV,iItemExistTime:= S14_Full_ObjectExistTimeSV,
+	iItemNotExistErrorTime:= S14_Full_ObjectNotExistTimeSV,bFullRY:= S14_Supply_RY,bFullSNRError:= S14_Full_SNR_Error );

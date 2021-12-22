@@ -1,0 +1,236 @@
+(******************************************************************
+程式:Station 11 Control Program
+作者Andy Wang
+版本資訊:V1.0		2017/05/08
+********************************************************************
+控制程式
+(*PowerOn=0*)
+(*Idle=1*)
+(*檢查墊片出和定位出=2---------------------------------)                 
+(*無墊片=3*)                                      (*有墊片=15*)               
+(*鎖付下和檢查墊片回=4*)                       (*墊片檢查回警報發=16*)                     
+(*鎖付開始=5*)                    
+(*鎖付中=6*)                      
+(*鎖付完成=7*)                     
+(*鎖付檢查=8------------------------------------NG=17*)                
+(*浮鎖檢查=9*)            
+(*鎖付回=10*)                
+(*定位回=11*)                 
+(********************************************************************)
+(*復歸程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*鎖付停止=2*)
+(*上下回=3*)
+(*定位回檢查墊片回=4*)
+(******************************************************************)
+(*本站狀態判斷*)
+IF (IndexData[11].OKFlag[11]
+	OR IndexData[11].NGFlag[11])  THEN
+	IndexData[11].FinishFlag[11]:=TRUE;
+END_IF;
+
+IF NOT(IndexData[11].FinishFlag[10]
+	AND IndexData[11].OKFlag[10]
+	AND NOT(IndexData[11].NGFlag[10])) THEN
+	IndexData[11].NGFlag[10]:=TRUE;
+END_IF;
+
+IF DisablePB[11] AND IndexData[11].FinishFlag[2] AND IndexData[11].OKFlag[2] AND NOT(IndexData[11].NGFlag[2]) THEN
+	IndexData[11].OKFlag[11]:=TRUE;
+END_IF;
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Autoflow:=0;
+	ErrorCounter:=0;
+END_IF;
+
+(*Idle=1*)
+IF AutoFlow=0 AND SystemReadyStatus AND NOT(ErrorStatus[11]) AND EStopPB THEN
+	AutoFlow:=1;
+END_IF;
+IF Autoflow=1 THEN		(*IDLE狀態*)
+	AutoIdle[11]:=TRUE;
+	ELSE
+	AutoIdle[11]:=FALSE;
+END_IF;
+ORGFlag[11]:=AutoStatus AND S11_CheckUp_LS 
+             AND S11_Up_LS AND S11_LockBack_LS;
+(*鎖完成*)
+IF Autoflow=11 AND S11_LockBack_LS AND NOT(S11_Lock_SOL) AND IndexData[10].OkFlag[10] THEN
+	Autoflow:=1;
+END_IF;
+(*墊片NG*)
+IF Autoflow=16 AND S11_Washer_Error AND S11_CheckUp_LS THEN
+	Autoflow:=1;
+END_IF;
+IF Autoflow=1 THEN		(*IDLE狀態*)
+	AutoIdle[10]:=TRUE;
+	ELSE
+	AutoIdle[10]:=FALSE;
+END_IF;
+(*檢查墊片出和定位出=2*)
+IF Autoflow=1
+	AND AutoStatus
+	AND NOT(S11_Release_PB)
+	AND NOT(S11_Washer_Error)
+	AND NOT(DisablePB[11])
+	AND ORGFlag[11]
+	AND (MachineRunStatus AND NOT(IndexData[11].FinishFlag[11]) AND IndexData[11].FinishFlag[10] AND IndexData[11].OKFlag[10] AND NOT(IndexData[11].NGFlag[10])
+	OR Rtrig_test.Q) THEN
+	Autoflow:=2;
+END_IF;
+(*有墊片=15 NG*)  
+TON_1(IN:= Autoflow=2 AND S11_CheckDown_LS ,PT:=t#300ms );
+TON_2(IN:= Autoflow=2 AND NOT(S11_CheckDown_LS) ,PT:=t#2s );
+IF Autoflow=2 AND TON_2.Q  THEN
+	Autoflow:=15;
+END_IF;
+(*墊片檢查回警報發=16*) 
+IF Autoflow=15 AND S11_CheckUp_LS  THEN
+	Autoflow:=16;
+	S11_Washer_Error:=TRUE;
+END_IF;
+IF ResetPB THEN
+	S11_Washer_Error:=FALSE;
+END_IF;
+(*無墊片=3 OK*) 
+IF Autoflow=2 AND TON_1.Q THEN
+	Autoflow:=3;
+END_IF;
+(*鎖付下和檢查墊片回=4*)
+IF Autoflow=3  THEN
+	Autoflow:=4;
+END_IF;
+(*鎖付開始=5*)
+IF Autoflow=4 AND S11_Down_LS THEN
+	Autoflow:=5;
+	S11_ScrewStartFlag:=TRUE;
+END_IF;
+(*手動啟動伺服*)
+IF S11_ScrewStart_PB THEN
+	S11_ScrewStartFlag:=TRUE;
+END_IF;
+IF S11_ScrewFinishFlag OR Initflow=2 THEN
+	S11_ScrewStartFlag:=FALSE;
+END_IF;
+(*鎖付中=6*)  
+IF Autoflow=5 AND NOT(S11_ScrewFinishFlag) THEN
+	Autoflow:=6;
+END_IF;
+(*鎖付完成=7*)  	
+IF Autoflow=6 AND S11_ScrewFinishFlag THEN
+	Autoflow:=7;
+	S11_ScrewStartFlag:=FALSE;
+END_IF;
+(*鎖付檢查=8*)  
+IF Autoflow=7 AND ( DeltaServoData.ScrewOK  OR DeltaServoData.ScrewNG OR DeltaServoData.ScrewTimeOut ) THEN
+	Autoflow:=8;
+END_IF;
+(*鎖付NG=17*)
+IF Autoflow=8 AND (DeltaServoData.ScrewNG OR  DeltaServoData.ScrewTimeOut) THEN
+	Autoflow:=17;
+	IndexData[11].NgFlag[11]:=TRUE;
+END_IF;
+(*浮鎖檢查=9*)
+IF Autoflow=8 AND DeltaServoData.ScrewOK THEN
+	Autoflow:=9;
+END_IF;
+TON_3(IN:= Autoflow=9 AND S11_FloatCheck_SNR ,PT:=t#300ms );
+TON_4(IN:= Autoflow=9 AND NOT(S11_FloatCheck_SNR) ,PT:=t#2s );
+IF Autoflow=9 AND TON_3.Q THEN
+	IndexData[11].OKFlag[11]:=TRUE;
+END_IF;
+IF Autoflow=9 AND TON_4.Q THEN
+	IndexData[11].NgFlag[11]:=TRUE;
+END_IF;
+(*鎖付回=10*) 
+IF (Autoflow=17 AND IndexData[11].NgFlag[11]) OR (Autoflow=9 AND (IndexData[11].OKFlag[11] OR IndexData[11].NgFlag[11])) THEN
+	Autoflow:=10;
+END_IF;
+(*定位回=11*)     
+IF Autoflow=10 AND S11_Up_LS THEN
+	Autoflow:=11;
+END_IF;
+(*************************************************************************)
+(*Error*)
+IF NOT(SystemReadyStatus) OR ErrorStatus[11] OR NOT(EStopPB)  THEN
+	IF NOT(IndexData[11].OKFlag[11]) THEN
+		IndexData[11].NGFlag[11]:=TRUE;
+	END_IF;
+	Autoflow:=0;
+END_IF;
+(*次數異常
+IF ResetPB THEN
+ErrorCounter:=0;
+END_IF;
+IF ErrorCounter>=2 THEN
+CountError[9]:=TRUE;
+END_IF;*)
+(*手動*)
+R_TRIG_1(_CLK:= S11_CheckUpDown_PB);
+interlockdown:=Index_LS AND NOT(Index_RY);   			  
+(*SET墊片檢查上下*)
+IF ((R_TRIG_1.Q AND NOT(CheckUpDownStatus)) OR Autoflow=2) AND interlockdown  THEN
+	S11_CheckUpDown_SOL:=TRUE;
+END_IF;
+(*RST墊片檢查上下*)	
+IF ((R_TRIG_2.Q AND CheckUpDownStatus) OR Autoflow=16 OR Autoflow=4 OR Initflow=4 )   THEN
+	S11_CheckUpDown_SOL:=FALSE;
+END_IF;
+CheckUpDownStatus:=S11_CheckUpDown_SOL;
+(*SET定位前後*)
+R_TRIG_2(_CLK:= S11_Lock_PB);
+IF ((R_TRIG_2.Q AND NOT(LockStatus)) OR Autoflow=2 ) AND interlockdown THEN
+	S11_Lock_SOL:=TRUE;
+END_IF;
+(*RST定位前後*)
+IF ((R_TRIG_2.Q AND LockStatus) OR Autoflow=11 OR Initflow=4 ) THEN
+	S11_Lock_SOL:=FALSE;
+END_IF;
+LockStatus:=S11_Lock_SOL;
+(*SET鎖付上下*)
+R_TRIG_3(_CLK:= S11_UpDown_PB);
+IF ((R_TRIG_3.Q AND NOT(UpDownStatus)) OR Autoflow=4 ) AND interlockdown THEN
+	S11_UpDown_SOL:=TRUE;
+END_IF;
+(*RST鎖付上下*)
+IF ((R_TRIG_3.Q AND UpDownStatus) OR Autoflow=10 OR Initflow=3 )  THEN
+	S11_UpDown_SOL:=FALSE;
+END_IF;	
+UpDownStatus:=S11_UpDown_SOL;
+(********************************************************************)
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Initflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF Initflow=0 THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=4 AND  S11_CheckUp_LS AND S11_LockBack_LS  THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=1 THEN		(*IDLE狀態*)
+	InitIdle[11]:=TRUE;
+	ELSE
+	InitIdle[11]:=FALSE;
+END_IF;
+(*鎖付停止=2*)
+F_TRIG_1(_CLK:= ErrorStatus[11]);
+R_TRIG_4(_CLK:= AutoStatus );
+R_TRIG_5(_CLK:= NOT(EStopPB));
+IF Initflow=1 AND (F_TRIG_1.Q OR Manual2AutoFlag OR R_TRIG_5.Q ) THEN
+	Initflow:=2;
+END_IF;
+(*上下回=3*)
+IF Initflow=2 AND Servo_OUT_ZSP_AX1 THEN
+	Initflow:=3;
+END_IF;
+(*定位回檢查墊片回=4*)
+IF Initflow=3 AND S11_Up_LS THEN
+	Initflow:=4;
+END_IF; 

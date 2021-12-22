@@ -1,0 +1,230 @@
+(******************************************************************
+程式:Station 9 Control Program
+作者Andy Wang
+版本資訊:v1.0		2017/04/05
+********************************************************************
+控制程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*上下.移位出馬達轉=2*)
+(*點膠.噴矽油ON=3*)
+(*點膠.噴矽油OFF=4*)
+(*馬達OFF=5*)
+(*移位歸=6*)
+(*上下回=7*)
+(********************************************************************
+復歸程式*)
+(*PowerOn=0*)
+(*Idle=1*)
+(*點膠.噴矽油OFF=2*)
+(*馬達OFF=3*)
+(*移位歸=4*)
+(*上下回=5*)
+(******************************************************************)
+(*本站狀態判斷*)
+IF IndexData[9].OKFlag[9]
+	OR IndexData[9].NGFlag[9] THEN
+	IndexData[9].FinishFlag[9]:=TRUE;
+END_IF;
+
+IF NOT(IndexData[9].FinishFlag[8]
+	AND IndexData[9].OKFlag[8]
+	AND NOT(IndexData[9].NGFlag[8])) THEN
+	IndexData[9].NGFlag[8]:=TRUE;
+END_IF;
+
+IF DisablePB[9] AND IndexData[9].FinishFlag[2] AND IndexData[9].OKFlag[2] AND NOT(IndexData[9].NGFlag[2]) THEN
+	IndexData[9].OKFlag[9]:=TRUE;
+END_IF;
+Rtrig_test(_CLK:=TestPB[9]);
+(*時間轉換*)
+GlueMotorDelayTimer:=WORD_TO_TIME(S9_GlueMotorDelayTimer)*100;(*馬達延時停止時間*)
+GlueTimer:=WORD_TO_TIME(S9_GlueTimer)*100;(*點膠時間*)
+TotalMotorTimer:=GlueTimer+GlueMotorDelayTimer;(*點膠時間+馬達延時停止時間*)
+OilTimer:=WORD_TO_TIME(S9_OilTimer)*100;(*噴油時間*)
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Autoflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF AutoFlow=0 AND SystemReadyStatus AND NOT(ErrorStatus[9]) AND EStopPB THEN
+	AutoFlow:=1;
+END_IF;
+ORGFlag[9]:=AutoStatus AND S9_Up_LS AND S9_GlueMoveBack_LS ;
+IF Autoflow=7 AND S9_Up_LS THEN
+	Autoflow:=1;
+END_IF;
+
+IF Autoflow=1 THEN		(*IDLE狀態*)
+	AutoIdle[9]:=TRUE;
+	ELSE
+	AutoIdle[9]:=FALSE;
+END_IF;
+(*上下.移位出馬達轉=2*)
+IF Autoflow=1
+	AND AutoStatus
+	AND NOT(DisablePB[9])
+	AND ORGFlag[9]
+	AND (MachineRunStatus AND NOT(IndexData[9].FinishFlag[9]) AND IndexData[9].FinishFlag[8] AND IndexData[9].OKFlag[8] AND NOT(IndexData[9].NGFlag[8])
+	OR Rtrig_test.Q) THEN
+	Autoflow:=2;
+END_IF;
+(*點膠.噴矽油ON=3*)
+IF S9_Down_LS AND NOT(S9_Up_LS) THEN
+	DownStatus:=TRUE;
+END_IF;
+IF S9_Up_LS THEN
+	DownStatus:=FALSE;
+END_IF;
+TON_1(IN:= Autoflow=2 AND DownStatus AND S9_GlueMoveOut_LS ,PT:=t#500ms );
+IF Autoflow=2 AND TON_1.Q THEN
+	Autoflow:=3;
+END_IF;
+(*點膠.噴矽油OFF=4*)
+TON_2(IN:= Autoflow=3 AND NOT(S9_Glue_SOL) AND NOT(S9_Blow_SOL) ,PT:=t#100ms );
+IF Autoflow=3 AND TON_2.Q THEN
+	Autoflow:=4;
+END_IF;
+(*馬達OFF=5*)
+TON_3(IN:= Autoflow=4  ,PT:=GlueMotorDelayTimer );
+IF Autoflow=4 AND TON_3.Q THEN
+	Autoflow:=5;
+	IndexData[9].OkFlag[9]:=TRUE;
+END_IF;
+(*移位歸=6*)
+IF Autoflow=5 AND IndexData[9].OkFlag[9] THEN
+	Autoflow:=6;
+END_IF;
+(*上下回=7*)
+IF Autoflow=6 AND NOT(S9_GlueMoveOut_LS) THEN
+	Autoflow:=7;
+END_IF;
+(*************************************************************************)
+(*Error*)
+IF NOT(SystemReadyStatus) OR ErrorStatus[9] OR NOT(EStopPB)  THEN
+	IF NOT(IndexData[9].OKFlag[9]) THEN
+		IndexData[9].NGFlag[9]:=TRUE;
+	END_IF;
+	Autoflow:=0;
+END_IF;
+(*次數異常
+IF ResetPB THEN
+ErrorCounter:=0;
+END_IF;
+IF ErrorCounter>=2 THEN
+CountError[9]:=TRUE;
+END_IF;*)
+(*手動*)
+(*上下*)
+R_TRIG_1(_CLK:= S9_UpDown_PB);
+interlockdown:=Index_LS AND NOT(Index_RY);
+(*SET*)
+IF ((R_TRIG_1.Q AND NOT(UpDownStatus)) OR Autoflow=2) AND interlockdown THEN
+	S9_UpDown_SOL:=TRUE;
+END_IF;
+(*RESET*)
+interlockUp:=TRUE;
+IF ((R_TRIG_1.Q AND (UpDownStatus)) OR Autoflow=7 OR Initflow=5) AND interlockUp THEN
+	S9_UpDown_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+UpDownStatus:=S9_UpDown_SOL;
+(*點膠移位*)
+R_TRIG_2(_CLK:= S9_GlueMove_PB);
+(*SET*)
+IF ((R_TRIG_2.Q AND NOT(GlueMoveStatus)) OR Autoflow=2)  THEN
+	S9_GlueMove_SOL:=TRUE;
+END_IF;
+(*RESET*)
+IF ((R_TRIG_2.Q AND (GlueMoveStatus)) OR Autoflow=6 OR Initflow=4 ) THEN
+	S9_GlueMove_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+GlueMoveStatus:=S9_GlueMove_SOL;
+(*點膠*)
+R_TRIG_3(_CLK:= S9_Glue_PB);
+(*SET*)
+IF R_TRIG_3.Q  OR Autoflow=3  THEN
+	S9_Glue_SOL:=TRUE;
+END_IF;
+IF S9_Glue_SOL AND S9_Motor_RY THEN
+	glueFlag:=TRUE;
+END_IF;
+(*RESET*)
+TON_4(IN:= S9_Glue_SOL  ,PT:=GlueTimer );
+IF  TON_4.Q  THEN
+	S9_Glue_SOL:=FALSE;
+END_IF;
+(*馬達旋轉*)
+R_TRIG_4(_CLK:= S9_GlueMotor_PB);
+(*SET*)
+IF ((R_TRIG_4.Q AND NOT(GlueMotorStatus)) OR Autoflow=2)  THEN
+	S9_Motor_RY:=TRUE;
+END_IF;
+(*RESET*)
+TON_5(IN:= S9_Motor_RY AND glueFlag AND NOT(AutoStatus) ,PT:=TotalMotorTimer );
+IF ((R_TRIG_4.Q AND (GlueMotorStatus)) OR TON_5.Q OR Autoflow=5 OR Initflow=3 ) THEN
+	S9_Motor_RY:=FALSE;
+	glueFlag:=FALSE;
+END_IF;
+(*STATUS*)
+GlueMotorStatus:=S9_Motor_RY;
+(*噴矽油*)
+R_TRIG_5(_CLK:= S9_Oil1_PB);
+(*SET*)
+IF R_TRIG_5.Q  OR Autoflow=3   THEN
+	S9_Blow_SOL:=TRUE;
+END_IF;
+TON_7(IN:= S9_Blow_SOL ,PT:=t#300ms );
+IF TON_7.Q THEN
+	S9_Oil1_SOL:=TRUE;
+END_IF;
+TON_8(IN:= S9_Oil1_SOL ,PT:=OilTimer );
+IF TON_8.Q THEN
+	S9_Oil1_SOL:=FALSE;
+END_IF;
+TON_6(IN:= NOT(S9_Oil1_SOL) AND S9_Blow_SOL ,PT:=t#400ms );
+IF TON_6.Q THEN
+	S9_Blow_SOL:=FALSE;
+END_IF;
+
+(********************************************************************)
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Initflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF Initflow=0 THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=5 AND S9_Up_LS THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=1 THEN		(*IDLE狀態*)
+	InitIdle[9]:=TRUE;
+	ELSE
+	InitIdle[9]:=FALSE;
+END_IF;
+(*點膠.噴矽油OFF=2*)
+F_TRIG_1(_CLK:= ErrorStatus[9]);
+R_TRIG_6(_CLK:= AutoStatus );
+R_TRIG_7(_CLK:= NOT(EStopPB));
+IF Initflow=1 AND (F_TRIG_1.Q OR Manual2AutoFlag OR R_TRIG_7.Q ) THEN
+	Initflow:=2;
+END_IF;
+(*馬達OFF=3*)
+IF Initflow=2 AND NOT(S9_Glue_SOL) AND NOT(S9_Blow_SOL) THEN
+	Initflow:=3;
+END_IF;
+(*移位歸=4*)
+IF Initflow=3 AND NOT(S9_Motor_RY) THEN
+	Initflow:=4;
+END_IF;
+(*上下回=5*)
+IF Initflow=4 AND S9_GlueMoveBack_LS THEN
+	Initflow:=5;
+END_IF;

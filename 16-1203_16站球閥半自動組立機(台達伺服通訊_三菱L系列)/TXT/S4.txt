@@ -1,0 +1,214 @@
+(******************************************************************)
+(*程式:Station 4 Control Program
+作者Andy Wang
+版本資訊:V1.0		2017/04/05*)
+
+(******************************************************************)
+(*控制程式*)
+
+(*PowerOn=0*)
+(*Idle=1*)
+(*上下出=2*)
+(*密封墊噴油=3*)
+(*上下回=4*)
+(*導正出=5*)
+(*導正噴油=6*)
+(*導正回=7*)
+(******************************************************************)
+(*復歸程式*)
+
+(*PowerOn=0*)
+(*Idle=1*)
+(*噴油關=2*)
+(*上下導正回=3*)
+(******************************************************************)
+(*本站狀態判斷*)
+IF IndexData[4].OKFlag[4]
+	OR IndexData[4].NGFlag[4] THEN
+	IndexData[4].FinishFlag[4]:=TRUE;
+END_IF;
+
+IF NOT(IndexData[4].FinishFlag[3]
+	AND IndexData[4].OKFlag[3]
+	AND NOT(IndexData[4].NGFlag[3])) THEN
+	IndexData[4].NGFlag[4]:=TRUE;
+END_IF;
+
+IF DisablePB[4] AND IndexData[4].FinishFlag[2] AND IndexData[4].OKFlag[2] AND NOT(IndexData[4].NGFlag[2]) THEN
+	IndexData[4].OKFlag[4]:=TRUE;
+END_IF;
+Rtrig_test(_CLK:=TestPB[4]);
+(*時間轉換*)
+UpOilTimer:=WORD_TO_TIME(S4_UpOilTimer)*100;
+FixOilTimer:=WORD_TO_TIME(S4_FixOilTimer)*100;
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Autoflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF AutoFlow=0 AND SystemReadyStatus AND NOT(ErrorStatus[4]) AND EStopPB THEN
+	AutoFlow:=1;
+END_IF;
+ORGFlag[4]:=AutoStatus
+AND S4_Up_LS
+AND S4_LockBack_LS;
+
+IF Autoflow=7 AND S4_LockBack_LS THEN
+	Autoflow:=1;
+END_IF;
+
+IF Autoflow=1 THEN		(*IDLE狀態*)
+	AutoIdle[4]:=TRUE;
+	ELSE
+	AutoIdle[4]:=FALSE;
+END_IF;
+(*上下出=2*)
+IF Autoflow=1
+	AND AutoStatus
+	AND NOT(DisablePB[4])
+	AND ORGFlag[4]
+	AND (MachineRunStatus AND NOT(IndexData[4].FinishFlag[4]) AND IndexData[4].FinishFlag[3] AND IndexData[4].OKFlag[3] AND NOT(IndexData[4].NGFlag[3])
+	OR Rtrig_test.Q) THEN
+	Autoflow:=2;
+END_IF;
+(*密封墊噴油=3*)
+IF Autoflow=2 AND S4_Down_LS THEN
+	Autoflow:=3;
+END_IF;
+TON_5(IN:= S4_Oil1_SOL ,PT:=UpOilTimer );
+TON_6(IN:= NOT(S4_Oil1_SOL) ,PT:=T#300MS );
+IF S4_Oil1_SOL AND NOT(TON_6.Q) THEN
+	S4_Blow_SOL:=TRUE;
+	ELSE
+	S4_Blow_SOL:=FALSE;
+END_IF;
+
+(*上下回=4*)
+TON_1(IN:= NOT(S4_Blow_SOL) AND NOT(S4_Oil1_SOL) ,PT:=t#100ms );
+IF Autoflow=3 AND TON_1.Q  THEN
+	Autoflow:=4;
+END_IF;
+(*導正出=5*)
+IF Autoflow=4 AND S4_Up_LS  THEN
+	Autoflow:=5;
+END_IF;
+TON_2(IN:= Autoflow=5 AND S4_LockOut_LS ,PT:= t#100ms);	(*導正成功*)
+IF TON_2.Q AND Autoflow=5 THEN
+	ErrorCounter:=0;
+	IndexData[4].OKFlag[4]:=TRUE;
+        Autoflow:=8;
+END_IF; 
+	
+TON_3(IN:= Autoflow=5 AND NOT(S4_LockOut_LS) AND S4_Lock_SOL ,PT:= t#2000ms);	(*導正失敗*)
+IF TON_3.Q AND Autoflow=5 THEN
+	ErrorCounter:=ErrorCounter+1;
+	IndexData[4].NGFlag[4]:=TRUE;
+	IndexData[4].ErrorRecordData[4]:=4;
+        Autoflow:=9;
+END_IF;
+(*導正噴油=6*)
+IF Autoflow=8 AND S4_Lock_SOL THEN
+	Autoflow:=6;
+END_IF;
+TON_7(IN:= S4_Oil2_SOL ,PT:= FixOilTimer);
+(*導正回=7*)
+TON_4(IN:= Autoflow=6 AND NOT(S4_Oil2_SOL) ,PT:= t#100ms);
+IF  (TON_4.Q AND IndexData[4].OKFlag[4]) OR (Autoflow=9 AND IndexData[4].NGFlag[4]) THEN
+	Autoflow:=7;
+END_IF;
+
+(********************************************************************)
+(*Error*)
+IF NOT(SystemReadyStatus) OR ErrorStatus[4] OR NOT(EStopPB)  THEN
+	IF NOT(IndexData[4].OKFlag[4]) THEN
+		IndexData[4].NGFlag[4]:=TRUE;
+	END_IF;
+	Autoflow:=0;
+END_IF;
+(*次數異常*)
+(*IF ResetPB THEN
+ErrorCounter:=0;
+END_IF;
+IF ErrorCounter>=2 THEN
+CountError[4]:=TRUE;
+END_IF;*)
+
+(*手動*)
+(*軸孔導正*)
+R_TRIG_1(_CLK:= S4_Fix_PB);
+interlockFix:=Index_LS AND NOT(Index_RY);
+(*SET*)
+IF ((R_TRIG_1.Q AND NOT(FixStatus)) OR Autoflow=5) AND interlockFix THEN
+	S4_Lock_SOL:=TRUE;
+END_IF;
+(*RESET*)
+IF ((R_TRIG_1.Q AND (FixStatus)) OR Autoflow=7  OR Initflow=3) AND interlockFix THEN
+	S4_Lock_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+FixStatus:=S4_Lock_SOL;
+(*噴油上下*)
+R_TRIG_2(_CLK:= S4_UpDown_PB);
+interlockdown:=Index_LS AND NOT(Index_RY);
+interlockup:=TRUE;
+(*SET*)
+IF ((R_TRIG_2.Q AND NOT(updownStatus)) OR Autoflow=2) AND interlockdown THEN
+	S4_UpDown_SOL:=TRUE;
+END_IF;
+(*RESET*)
+IF ((R_TRIG_2.Q AND (updownStatus)) OR Autoflow=4  OR Initflow=3) AND interlockup THEN
+	S4_UpDown_SOL:=FALSE;
+END_IF;
+(*STATUS*)
+updownStatus:=S4_UpDown_SOL;
+(*密封墊噴油*)
+R_TRIG_3(_CLK:= S4_UpOil_PB);
+(*SET*)
+IF R_TRIG_3.Q  OR Autoflow=3  THEN
+	S4_Oil1_SOL:=TRUE;
+END_IF;
+(*RESET*)
+IF TON_5.Q OR Initflow=2 THEN
+	S4_Oil1_SOL:=FALSE;
+END_IF;
+(*軸孔噴油*)
+R_TRIG_4(_CLK:= S4_FixOil_PB);
+(*SET*)
+IF R_TRIG_4.Q  OR Autoflow=6  THEN
+	S4_Oil2_SOL:=TRUE;
+END_IF;
+(*RESET*)
+IF TON_7.Q OR Initflow=2 THEN
+	S4_Oil2_SOL:=FALSE;
+END_IF;
+(********************************************************************)
+(*PowerOn=0*)
+IF NOT(SystemReadyStatus) THEN
+	Initflow:=0;
+END_IF;
+
+(*Idle=1*)
+IF Initflow=0 THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=3 AND S4_LockBack_LS AND S4_Up_LS THEN
+	Initflow:=1;
+END_IF;
+
+IF Initflow=1 THEN		(*IDLE狀態*)
+	InitIdle[4]:=TRUE;
+	ELSE
+	InitIdle[4]:=FALSE;
+END_IF;
+(*夾取回=2*)
+F_TRIG_1(_CLK:= ErrorStatus[4]);
+R_TRIG_5(_CLK:= AutoStatus );
+R_TRIG_6(_CLK:= NOT(EStopPB));
+IF Initflow=1 AND (F_TRIG_1.Q OR R_TRIG_5.Q OR R_TRIG_6.Q ) THEN
+	Initflow:=2;
+END_IF;
+IF Initflow=2 AND NOT(S4_Oil1_SOL) AND NOT(S4_Oil2_SOL) THEN
+	Initflow:=3;
+END_IF;
